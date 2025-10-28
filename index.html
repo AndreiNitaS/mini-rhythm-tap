@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rhythm Game (HTML + CSS only)</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    text-align: center;
+  }
+
+  h1 {
+    margin-bottom: 10px;
+  }
+
+  /* container for everything */
+  .game-container {
+    display: inline-block;
+    border: 1px solid #000;
+    padding: 20px;
+  }
+
+  /* row of 16 boxes for each beat */
+  .beat-bar {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    margin: 15px 0;
+  }
+
+  .beat-box {
+    width: 30px;
+    height: 30px;
+    border: 1px solid #000;
+    background-color: #eee;
+  }
+
+  /* placeholders for info */
+  .info {
+    margin: 10px 0;
+  }
+
+  button {
+    padding: 6px 10px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="game-container">
+    <h1>Rhythm Game</h1>
+
+    <div class="beat-bar">
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+      <div class="beat-box"></div>
+    </div>
+
+    <div class="info">
+      <p>Beat: <span id="beatNow">0</span>/16</p>
+      <p>Score: <span id="score">0</span></p>
+    </div>
+
+    <button id="startBtn">Start</button>
+  </div>
+
+</body>
+</html>
