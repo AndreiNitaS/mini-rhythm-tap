@@ -1,83 +1,473 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Rhythm Game (HTML + CSS only)</title>
-<style>
-  body {
-    font-family: Arial, sans-serif;
-    margin: 20px;
-    text-align: center;
-  }
-
-  h1 {
-    margin-bottom: 10px;
-  }
-
-  /* container for everything */
-  .game-container {
-    display: inline-block;
-    border: 1px solid #000;
-    padding: 20px;
-  }
-
-  /* row of 16 boxes for each beat */
-  .beat-bar {
-    display: flex;
-    gap: 4px;
-    justify-content: center;
-    margin: 15px 0;
-  }
-
-  .beat-box {
-    width: 30px;
-    height: 30px;
-    border: 1px solid #000;
-    background-color: #eee;
-  }
-
-  /* placeholders for info */
-  .info {
-    margin: 10px 0;
-  }
-
-  button {
-    padding: 6px 10px;
-  }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rhythm Tap</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+      background: white;
+      font-family: Arial;
+      color: black;
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      color: black;
+    }
+    #info {
+      font-size: 20px;
+      margin: 10px 0;
+      color: black;
+    }
+    canvas {
+      border: 2px solid black;
+      background: #000;
+      display: block;
+      margin: 20px auto;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 10px;
+      border: 2px solid black;
+      border-radius: 5px;
+      background: #ddd;
+      color: black;
+      transition: 0.2s;
+    }
+    button:hover {
+      background: #bbb;
+    }
+    button.selected {
+      background: #00cc00;
+      color: white;
+      font-weight: bold;
+    }
+    .instructions {
+      margin: 10px 0;
+      font-size: 14px;
+      color: #555;
+    }
+    .difficulty-section {
+      margin: 15px 0;
+    }
+    .difficulty-section h3 {
+      margin: 10px 0 5px 0;
+      font-size: 14px;
+      color: #555;
+    }
+    .difficulty-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    #character {
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    }
+  </style>
 </head>
 <body>
 
-  <div class="game-container">
-    <h1>Rhythm Game</h1>
+<h1>Rhythm Tap</h1>
+<div id="info">Score: 0 | Beat: 0/16</div>
+<div class="instructions">Press SPACE when the line hits a box!</div>
+<div style="width: 1200px; margin: 20px auto;">
+  <canvas id="canvas" width="1200" height="150" style="border: 2px solid black; background: #000; display: block;"></canvas>
+</div>
+<div style="text-align: center; margin-top: 30px; height: 120px;">
+  <svg id="character" width="80" height="80" style="display: inline-block; transition: transform 0.05s linear;">
 
-    <div class="beat-bar">
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-      <div class="beat-box"></div>
-    </div>
+    <g id="splashed" style="display: block;">
+      <path d="M 15 50 Q 20 35 40 32 Q 60 35 65 50 L 15 50" stroke="black" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <line x1="32" y1="38" x2="36" y2="28" stroke="black" stroke-width="2.5" stroke-linecap="round"/>
+    </g>
 
-    <div class="info">
-      <p>Beat: <span id="beatNow">0</span>/16</p>
-      <p>Score: <span id="score">0</span></p>
-    </div>
+    <g id="midair" style="display: none;">
+      <ellipse cx="40" cy="35" rx="18" ry="22" stroke="black" stroke-width="3" fill="none"/>
+      <line x1="30" y1="10" x2="35" y2="20" stroke="black" stroke-width="2.5" stroke-linecap="round"/>
+    </g>
 
-    <button id="startBtn">Start</button>
+    <g id="fullsize" style="display: none;">
+      <circle cx="40" cy="35" r="24" stroke="black" stroke-width="3" fill="none"/>
+      <line x1="28" y1="8" x2="34" y2="20" stroke="black" stroke-width="2.5" stroke-linecap="round"/>
+    </g>
+  </svg>
+</div>
+
+<div class="difficulty-section">
+  <h3>Select Difficulty:</h3>
+  <div class="difficulty-buttons">
+    <button id="easy" class="difficulty-btn">Easy</button>
+    <button id="medium" class="difficulty-btn selected">Medium</button>
+    <button id="hard" class="difficulty-btn">Hard</button>
+    <button id="insane" class="difficulty-btn">Insane</button>
   </div>
+</div>
+
+<button id="start">START</button>
+<button id="stop">STOP</button>
+
+<script>
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  let gameRunning = false;
+  let score = 0;
+  let beatCount = 0;
+  let startTime = 0;
+  let linePosition = 0;
+  let audioContext = null;
+  let nextBeatTime = 0;
+  let lastBeatTime = 0;
+  let characterJumpTime = 0;
+  
+  const NUM_BOXES = 50;
+  const BOX_HEIGHT = 80;
+  const BOX_MARGIN = 2;
+  const TOTAL_BEATS = 50;
+  const BPM = 120; 
+  const BEAT_DURATION = 60 / BPM; 
+  
+  //Difficulty settings
+  const difficulties = {
+    easy: { speed: 20000, name: 'Easy' },
+    medium: { speed: 12000, name: 'Medium' },
+    hard: { speed: 7000, name: 'Hard' },
+    insane: { speed: 3500, name: 'Insane' }
+  };
+  
+  let currentDifficulty = 'medium';
+  let boxes = [];
+  
+  //Create boxes 
+  function initBoxes() {
+    boxes = [];
+    for (let i = 0; i < NUM_BOXES; i++) {
+      boxes.push({
+        index: i,
+        tapped: false,
+        jumpTime: 0
+      });
+    }
+
+    for (let i = 0; i < TOTAL_BEATS; i++) {
+      boxes[Math.floor(Math.random() * NUM_BOXES)].active = true;
+    }
+  }
+  
+
+  function startBackgroundMusic() {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    nextBeatTime = audioContext.currentTime;
+  }
+  
+  function playBackgroundBeat() {
+    if (!audioContext || !gameRunning) return;
+    
+    const currentTime = audioContext.currentTime;
+
+    while (nextBeatTime < currentTime + 0.1) {
+      playBeatSound(nextBeatTime);
+      nextBeatTime += BEAT_DURATION;
+    }
+  }
+  
+
+  function stopBackgroundMusic() {
+
+  }
+  
+  //Play beat sound
+  function playBeatSound(time) {
+    lastBeatTime = time;
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    
+    osc.frequency.value = 600;
+    osc.type = 'sine';
+    
+    gain.gain.setValueAtTime(0.15, time);
+    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+    
+    osc.start(time);
+    osc.stop(time + 0.1);
+  }
+  
+
+  function playWrongBeep() {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    
+    osc.frequency.value = 300;
+    osc.type = 'sine';
+    
+    gain.gain.setValueAtTime(0.1, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+    
+    osc.start(audioContext.currentTime);
+    osc.stop(audioContext.currentTime + 0.2);
+  }
+  
+
+  function updateCharacter() {
+    const character = document.getElementById('character');
+    const splashed = document.getElementById('splashed');
+    const midair = document.getElementById('midair');
+    const fullsize = document.getElementById('fullsize');
+    
+    if (characterJumpTime <= 0) {
+
+      splashed.style.display = 'block';
+      midair.style.display = 'none';
+      fullsize.style.display = 'none';
+      character.style.transform = 'translateY(0px)';
+      character.style.visibility = 'visible';
+      return;
+    }
+    
+    character.style.visibility = 'visible';
+    const jumpHeight = Math.sin(characterJumpTime) * 70; 
+    
+ 
+    character.style.transform = `translateY(-${jumpHeight}px)`;
+    
+
+    const jumpProgress = characterJumpTime / Math.PI;
+    
+    splashed.style.display = 'none';
+    midair.style.display = 'none';
+    fullsize.style.display = 'none';
+    
+    if (jumpProgress < 0.35) {
+      splashed.style.display = 'block';
+    } else if (jumpProgress < 0.65) {
+      midair.style.display = 'block';
+    } else {
+      fullsize.style.display = 'block';
+    }
+  }
+  
+  //Draw using Canvas API
+  function draw() {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    const boxWidth = (canvas.width - (NUM_BOXES + 1) * BOX_MARGIN) / NUM_BOXES;
+
+    for (let i = 0; i < NUM_BOXES; i++) {
+      const x = BOX_MARGIN + i * (boxWidth + BOX_MARGIN);
+      let y = 25;
+
+      const isActive = boxes[i].active && !boxes[i].tapped;
+      
+   
+      const jumpOffset = boxes[i].jumpTime > 0 ? Math.sin(boxes[i].jumpTime) * 15 : 0;
+      y -= jumpOffset;
+      
+      ctx.strokeStyle = isActive ? '#00ff00' : '#444';
+      ctx.lineWidth = isActive ? 3 : 2;
+      ctx.strokeRect(x, y, boxWidth, BOX_HEIGHT);
+      
+      if (isActive) {
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+        ctx.fillRect(x, y, boxWidth, BOX_HEIGHT);
+      }
+      
+      if (boxes[i].tapped) {
+        ctx.fillStyle = 'rgba(255, 100, 0, 0.3)';
+        ctx.fillRect(x, y, boxWidth, BOX_HEIGHT);
+      }
+    }
+    
+
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(linePosition, 0);
+    ctx.lineTo(linePosition, canvas.height);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(linePosition - 15, 20, 30, BOX_HEIGHT + 10);
+  }
+  
+  function getBoxAtLine() {
+    const boxWidth = (canvas.width - (NUM_BOXES + 1) * BOX_MARGIN) / NUM_BOXES;
+    
+    for (let i = 0; i < NUM_BOXES; i++) {
+      const x = BOX_MARGIN + i * (boxWidth + BOX_MARGIN);
+      if (linePosition >= x && linePosition <= x + boxWidth) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  function calculatePoints(boxIndex, linePos) {
+    const boxWidth = (canvas.width - (NUM_BOXES + 1) * BOX_MARGIN) / NUM_BOXES;
+    const boxX = BOX_MARGIN + boxIndex * (boxWidth + BOX_MARGIN);
+    const boxCenter = boxX + boxWidth / 2;
+    const distFromCenter = Math.abs(linePos - boxCenter);
+    const maxDist = boxWidth / 2;
+    let positionScore = Math.max(0, 1 - distFromCenter / maxDist);
+    const timingSinceLastBeat = audioContext.currentTime - lastBeatTime;
+    const beatsUntilNext = BEAT_DURATION - timingSinceLastBeat;
+    const timeDiff = Math.min(timingSinceLastBeat, beatsUntilNext);
+    const beatWindow = BEAT_DURATION / 2;
+    let timingScore = Math.max(0, 1 - timeDiff / beatWindow);
+    
+
+    const totalAccuracy = (positionScore + timingScore) / 2;
+    
+
+    if (totalAccuracy >= 0.8) return 100; 
+    if (totalAccuracy >= 0.6) return 50;  
+    if (totalAccuracy >= 0.4) return 25;  
+    return 10; 
+  }
+  
+  //Handle tap
+  function tap() {
+    if (!gameRunning) return;
+    
+    const boxIndex = getBoxAtLine();
+    
+    if (boxIndex >= 0) {
+      if (boxes[boxIndex].active && !boxes[boxIndex].tapped) {
+        boxes[boxIndex].tapped = true;
+        boxes[boxIndex].jumpTime = Math.PI;
+        const points = calculatePoints(boxIndex, linePosition);
+        score += points;
+        beatCount++;
+
+        characterJumpTime = Math.PI;
+        
+        playTapBeep();
+        
+        document.getElementById('info').textContent = 'Score: ' + score + ' | Beat: ' + beatCount + '/' + TOTAL_BEATS + ' (+' + points + ')';
+        
+        if (beatCount >= TOTAL_BEATS) {
+          endGame();
+        }
+      } else if (!boxes[boxIndex].active || boxes[boxIndex].tapped) {
+        score -= 10;
+        playWrongBeep();
+        document.getElementById('info').textContent = 'Score: ' + score + ' | Beat: ' + beatCount + '/' + TOTAL_BEATS + ' (-10)';
+      }
+    }
+  }
+  
+  //Tap beep sound
+  function playTapBeep() {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    
+    osc.connect(gain);
+    gain.connect(audioContext.destination);
+    
+    osc.frequency.value = 1000;
+    osc.type = 'sine';
+    
+    gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+    
+    osc.start(audioContext.currentTime);
+    osc.stop(audioContext.currentTime + 0.1);
+  }
+
+  function gameLoop(timestamp) {
+    if (!gameRunning) return;
+    
+    const elapsed = timestamp - startTime;
+    const speed = difficulties[currentDifficulty].speed;
+    linePosition = (elapsed / speed) * canvas.width;
+
+    for (let box of boxes) {
+      if (box.jumpTime > 0) {
+        box.jumpTime -= 0.15;
+      }
+    }
+ 
+    if (characterJumpTime > 0) {
+      characterJumpTime -= 0.15;
+    }
+    updateCharacter();
+
+    playBackgroundBeat();
+    
+    draw();
+ 
+    if (linePosition > canvas.width) {
+      endGame();
+      return;
+    }
+    
+    requestAnimationFrame(gameLoop);
+  }
+  
+
+  function endGame() {
+    gameRunning = false;
+    stopBackgroundMusic();
+  
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 30px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2);
+    ctx.font = '20px Arial';
+    ctx.fillText('Score: ' + score + ' | Difficulty: ' + difficulties[currentDifficulty].name, canvas.width / 2, canvas.height / 2 + 40);
+  }
+ 
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      tap();
+    }
+  });
+
+  document.querySelectorAll('.difficulty-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      if (!gameRunning) {
+        document.querySelectorAll('.difficulty-btn').forEach(b => b.classList.remove('selected'));
+        this.classList.add('selected');
+        currentDifficulty = this.id;
+      }
+    });
+  });
+
+  document.getElementById('start').addEventListener('click', () => {
+    gameRunning = true;
+    score = 0;
+    beatCount = 0;
+    linePosition = 0;
+    startTime = performance.now();
+    initBoxes();
+    startBackgroundMusic();
+    document.getElementById('info').textContent = 'Score: 0 | Beat: 0/' + TOTAL_BEATS;
+    requestAnimationFrame(gameLoop);
+  });
+
+  document.getElementById('stop').addEventListener('click', () => {
+    if (gameRunning) {
+      endGame();
+    }
+  });
+</script>
 
 </body>
 </html>
