@@ -69,6 +69,73 @@
     #character {
       filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
     }
+    .audio-controls {
+      margin: 20px auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%);
+      border-radius: 8px;
+      border: 2px solid #00ff00;
+      max-width: 1200px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    .audio-controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 30px;
+      margin: 15px 0;
+      flex-wrap: wrap;
+    }
+    .audio-control-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .audio-controls label {
+      margin: 0;
+      font-weight: bold;
+      color: #00ff00;
+      font-size: 14px;
+    }
+    .audio-controls input[type="range"] {
+      width: 120px;
+      height: 6px;
+      cursor: pointer;
+      accent-color: #00ff00;
+    }
+    .volume-display {
+      color: #00ff00;
+      font-weight: bold;
+      min-width: 40px;
+      text-align: right;
+    }
+    #visualizer {
+      border: 2px solid #00ff00;
+      background: #000;
+      display: block;
+      margin: 20px auto;
+      border-radius: 5px;
+      max-width: 1200px;
+      box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+    }
+    .audio-info {
+      font-size: 12px;
+      color: #00ff00;
+      margin-top: 15px;
+      text-align: center;
+    }
+    .checkbox-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #00ff00;
+    }
+    .checkbox-container input[type="checkbox"] {
+      cursor: pointer;
+      width: 18px;
+      height: 18px;
+      accent-color: #00ff00;
+    }
   </style>
 </head>
 <body>
@@ -79,6 +146,29 @@
 <div style="width: 1200px; margin: 20px auto;">
   <canvas id="canvas" width="1200" height="150" style="border: 2px solid black; background: #000; display: block;"></canvas>
 </div>
+
+<div class="audio-controls">
+  <div class="audio-controls-row">
+    <div class="audio-control-item">
+      <label for="masterVolume">🔊 Master:</label>
+      <input type="range" id="masterVolume" min="0" max="100" value="70">
+      <span class="volume-display" id="volumeDisplay">70%</span>
+    </div>
+    
+    <div class="audio-control-item">
+      <label for="bgVolume">🎵 BGM:</label>
+      <input type="range" id="bgVolume" min="0" max="100" value="40">
+      <span class="volume-display" id="bgVolumeDisplay">40%</span>
+    </div>
+    
+    <div class="checkbox-container">
+      <input type="checkbox" id="visualizerToggle" checked>
+      <label for="visualizerToggle" style="margin: 0;">Visualizer</label>
+    </div>
+  </div>
+</div>
+
+<canvas id="visualizer" width="1200" height="100"></canvas>
 <div style="text-align: center; margin-top: 30px; height: 120px;">
   <svg id="character" width="80" height="80" style="display: inline-block; transition: transform 0.05s linear;">
 
@@ -115,6 +205,8 @@
 <script>
   const canvas = document.getElementById('canvas');
   const ctx = canvas.getContext('2d');
+  const visualizerCanvas = document.getElementById('visualizer');
+  const vizCtx = visualizerCanvas.getContext('2d');
   
   let gameRunning = false;
   let score = 0;
@@ -125,6 +217,14 @@
   let nextBeatTime = 0;
   let lastBeatTime = 0;
   let characterJumpTime = 0;
+  let masterGain = null;
+  let bgMusicGain = null;
+  let analyser = null;
+  let dataArray = null;
+  
+
+  let masterVolume = 0.7;
+  let bgMusicVolume = 0.4;
   
   const NUM_BOXES = 50;
   const BOX_HEIGHT = 80;
@@ -133,7 +233,7 @@
   const BPM = 120; 
   const BEAT_DURATION = 60 / BPM; 
   
-  //Difficulty settings
+
   const difficulties = {
     easy: { speed: 20000, name: 'Easy' },
     medium: { speed: 12000, name: 'Medium' },
@@ -143,8 +243,7 @@
   
   let currentDifficulty = 'medium';
   let boxes = [];
-  
-  //Create boxes 
+
   function initBoxes() {
     boxes = [];
     for (let i = 0; i < NUM_BOXES; i++) {
@@ -160,12 +259,29 @@
     }
   }
   
+  // ===== AUDIO API =====
 
-  function startBackgroundMusic() {
+  function initializeAudioContext() {
     if (!audioContext) {
       audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioContext.createGain();
+      bgMusicGain = audioContext.createGain();
+      analyser = audioContext.createAnalyser();
+      masterGain.connect(analyser);
+      bgMusicGain.connect(analyser);
+      analyser.connect(audioContext.destination);
+      analyser.fftSize = 256;
+      dataArray = new Uint8Array(analyser.frequencyBinCount);
+      
+      updateMasterVolume();
+      updateBgVolume();
     }
+  }
+
+  function startBackgroundMusic() {
+    initializeAudioContext();
     nextBeatTime = audioContext.currentTime;
+    startAmbientMusic();
   }
   
   function playBackgroundBeat() {
@@ -178,25 +294,69 @@
       nextBeatTime += BEAT_DURATION;
     }
   }
-  
+
+  function startAmbientMusic() {
+    if (!audioContext || !gameRunning) return;
+    
+    const now = audioContext.currentTime;
+    
+
+    const frequencies = [220, 330, 440]; 
+    
+    frequencies.forEach((freq, index) => {
+      setTimeout(() => {
+        if (gameRunning && audioContext) {
+          const osc = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+          
+          osc.connect(gain);
+          gain.connect(bgMusicGain);
+          
+          osc.frequency.value = freq;
+          osc.type = 'sine';
+          
+          const startTime = audioContext.currentTime;
+          const duration = BEAT_DURATION * 2;
+          
+          gain.gain.setValueAtTime(0.08 * bgMusicVolume, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+          
+          osc.start(startTime);
+          osc.stop(startTime + duration);
+        }
+      }, index * 200);
+    });
+    
+
+    if (gameRunning) {
+      setTimeout(() => startAmbientMusic(), BEAT_DURATION * 4 * 1000);
+    }
+  }
 
   function stopBackgroundMusic() {
 
+    if (masterGain) {
+      const now = audioContext.currentTime;
+      masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    }
   }
   
-  //Play beat sound
+
   function playBeatSound(time) {
     lastBeatTime = time;
     const osc = audioContext.createOscillator();
     const gain = audioContext.createGain();
     
     osc.connect(gain);
-    gain.connect(audioContext.destination);
+    gain.connect(masterGain);
     
-    osc.frequency.value = 600;
+
+    const baseFreq = 600;
+    const variation = Math.sin(beatCount * 0.5) * 50;
+    osc.frequency.value = baseFreq + variation;
     osc.type = 'sine';
     
-    gain.gain.setValueAtTime(0.15, time);
+    gain.gain.setValueAtTime(0.15 * masterVolume, time);
     gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
     
     osc.start(time);
@@ -205,16 +365,19 @@
   
 
   function playWrongBeep() {
+    if (!audioContext) return;
+    
     const osc = audioContext.createOscillator();
     const gain = audioContext.createGain();
     
     osc.connect(gain);
-    gain.connect(audioContext.destination);
+    gain.connect(masterGain);
     
-    osc.frequency.value = 300;
-    osc.type = 'sine';
+    osc.frequency.setValueAtTime(400, audioContext.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.2);
+    osc.type = 'square';
     
-    gain.gain.setValueAtTime(0.1, audioContext.currentTime);
+    gain.gain.setValueAtTime(0.1 * masterVolume, audioContext.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
     
     osc.start(audioContext.currentTime);
@@ -260,7 +423,32 @@
     }
   }
   
-  //Draw using Canvas API
+
+  function drawVisualizer() {
+    if (!document.getElementById('visualizerToggle').checked || !analyser) return;
+    
+    analyser.getByteFrequencyData(dataArray);
+    
+    vizCtx.fillStyle = '#000';
+    vizCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+    
+    const barCount = Math.min(dataArray.length, 80);
+    const barWidth = visualizerCanvas.width / barCount;
+    
+    for (let i = 0; i < barCount; i++) {
+      const dataIndex = Math.floor((i / barCount) * dataArray.length);
+      const barHeight = (dataArray[dataIndex] / 255) * visualizerCanvas.height;
+      const hue = (i / barCount) * 360;
+      vizCtx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+      vizCtx.fillRect(i * barWidth, visualizerCanvas.height - barHeight, barWidth - 1, barHeight);
+      vizCtx.strokeStyle = `hsla(${hue}, 100%, 50%, 0.5)`;
+      vizCtx.lineWidth = 1;
+      vizCtx.strokeRect(i * barWidth, visualizerCanvas.height - barHeight, barWidth - 1, barHeight);
+    }
+  }
+  
+  // ===== CANVAS API =====
+
   function draw() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -339,7 +527,7 @@
     return 10; 
   }
   
-  //Handle tap
+
   function tap() {
     if (!gameRunning) return;
     
@@ -370,18 +558,26 @@
     }
   }
   
-  //Tap beep sound
+
   function playTapBeep() {
+    if (!audioContext) return;
+    
     const osc = audioContext.createOscillator();
     const gain = audioContext.createGain();
     
     osc.connect(gain);
-    gain.connect(audioContext.destination);
+    gain.connect(masterGain);
     
-    osc.frequency.value = 1000;
-    osc.type = 'sine';
+
+    let freq = 1000;
+    if (score > 1000) freq = 1200;
+    if (score > 2000) freq = 1400;
     
-    gain.gain.setValueAtTime(0.2, audioContext.currentTime);
+    osc.frequency.setValueAtTime(freq, audioContext.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
+    osc.type = 'triangle';
+    
+    gain.gain.setValueAtTime(0.2 * masterVolume, audioContext.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
     
     osc.start(audioContext.currentTime);
@@ -409,6 +605,7 @@
     playBackgroundBeat();
     
     draw();
+    drawVisualizer();
  
     if (linePosition > canvas.width) {
       endGame();
@@ -432,6 +629,33 @@
     ctx.font = '20px Arial';
     ctx.fillText('Score: ' + score + ' | Difficulty: ' + difficulties[currentDifficulty].name, canvas.width / 2, canvas.height / 2 + 40);
   }
+  
+
+  function updateMasterVolume() {
+    if (masterGain) {
+      masterGain.gain.value = masterVolume;
+    }
+  }
+  
+
+  function updateBgVolume() {
+    if (bgMusicGain) {
+      bgMusicGain.gain.value = bgMusicVolume;
+    }
+  }
+  
+
+  document.getElementById('masterVolume').addEventListener('input', function() {
+    masterVolume = this.value / 100;
+    document.getElementById('volumeDisplay').textContent = this.value + '%';
+    updateMasterVolume();
+  });
+  
+  document.getElementById('bgVolume').addEventListener('input', function() {
+    bgMusicVolume = this.value / 100;
+    document.getElementById('bgVolumeDisplay').textContent = this.value + '%';
+    updateBgVolume();
+  });
  
   document.addEventListener('keydown', e => {
     if (e.code === 'Space') {
