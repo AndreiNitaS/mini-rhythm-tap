@@ -228,6 +228,8 @@
   const backgroundVideo = document.getElementById('backgroundVideo');
   
   let gameRunning = false;
+  let isInitializing = false;
+  let ambientMusicTimeouts = [];
   let score = 0;
   let beatCount = 0;
   let startTime = 0;
@@ -282,18 +284,22 @@
 
   function initializeAudioContext() {
     if (!audioContext) {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      masterGain = audioContext.createGain();
-      bgMusicGain = audioContext.createGain();
-      analyser = audioContext.createAnalyser();
-      masterGain.connect(analyser);
-      bgMusicGain.connect(analyser);
-      analyser.connect(audioContext.destination);
-      analyser.fftSize = 256;
-      dataArray = new Uint8Array(analyser.frequencyBinCount);
-      
-      updateMasterVolume();
-      updateBgVolume();
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = audioContext.createGain();
+        bgMusicGain = audioContext.createGain();
+        analyser = audioContext.createAnalyser();
+        masterGain.connect(analyser);
+        bgMusicGain.connect(analyser);
+        analyser.connect(audioContext.destination);
+        analyser.fftSize = 256;
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        
+        updateMasterVolume();
+        updateBgVolume();
+      } catch (e) {
+        console.log('Error initializing audio context:', e);
+      }
     }
   }
 
@@ -323,39 +329,46 @@
     const frequencies = [220, 330, 440]; 
     
     frequencies.forEach((freq, index) => {
-      setTimeout(() => {
-        if (gameRunning && audioContext) {
-          const osc = audioContext.createOscillator();
-          const gain = audioContext.createGain();
-          
-          osc.connect(gain);
-          gain.connect(bgMusicGain);
-          
-          osc.frequency.value = freq;
-          osc.type = 'sine';
-          
-          const startTime = audioContext.currentTime;
-          const duration = BEAT_DURATION * 2;
-          
-          gain.gain.setValueAtTime(0.08 * bgMusicVolume, startTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-          
-          osc.start(startTime);
-          osc.stop(startTime + duration);
+      const timeoutId = setTimeout(() => {
+        if (gameRunning && audioContext && audioContext.state !== 'closed') {
+          try {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.connect(gain);
+            gain.connect(bgMusicGain);
+            
+            osc.frequency.value = freq;
+            osc.type = 'sine';
+            
+            const startTime = audioContext.currentTime;
+            const duration = BEAT_DURATION * 2;
+            
+            gain.gain.setValueAtTime(0.08 * bgMusicVolume, startTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+            
+            osc.start(startTime);
+            osc.stop(startTime + duration);
+          } catch (e) {
+            console.log('Error in ambient music:', e);
+          }
         }
       }, index * 200);
+      ambientMusicTimeouts.push(timeoutId);
     });
     
 
     if (gameRunning) {
-      setTimeout(() => startAmbientMusic(), BEAT_DURATION * 4 * 1000);
+      const ambientTimeoutId = setTimeout(() => startAmbientMusic(), BEAT_DURATION * 4 * 1000);
+      ambientMusicTimeouts.push(ambientTimeoutId);
     }
   }
 
   function stopBackgroundMusic() {
-    if (audioContext && masterGain) {
+    if (audioContext && masterGain && audioContext.state !== 'closed') {
       try {
         const now = audioContext.currentTime;
+        masterGain.gain.setValueAtTime(masterGain.gain.value, now);
         masterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
       } catch (e) {
         console.log('Error stopping background music:', e);
@@ -365,46 +378,52 @@
   
 
   function playBeatSound(time) {
-    if (!audioContext || !masterGain) return;
-    lastBeatTime = time;
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    
-    osc.connect(gain);
-    gain.connect(masterGain);
-    
-
-    const baseFreq = 600;
-    const variation = Math.sin(beatCount * 0.5) * 50;
-    osc.frequency.value = baseFreq + variation;
-    osc.type = 'sine';
-    
-    gain.gain.setValueAtTime(0.15 * masterVolume, time);
-    gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
-    
-    osc.start(time);
-    osc.stop(time + 0.1);
+    if (!audioContext || !masterGain || audioContext.state === 'closed') return;
+    try {
+      lastBeatTime = time;
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      
+      const baseFreq = 600;
+      const variation = Math.sin(beatCount * 0.5) * 50;
+      osc.frequency.value = baseFreq + variation;
+      osc.type = 'sine';
+      
+      gain.gain.setValueAtTime(0.15 * masterVolume, time);
+      gain.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+      
+      osc.start(time);
+      osc.stop(time + 0.1);
+    } catch (e) {
+      console.log('Error playing beat sound:', e);
+    }
   }
   
 
   function playWrongBeep() {
-    if (!audioContext || !masterGain) return;
-    
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    
-    osc.connect(gain);
-    gain.connect(masterGain);
-    
-    osc.frequency.setValueAtTime(400, audioContext.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.2);
-    osc.type = 'square';
-    
-    gain.gain.setValueAtTime(0.1 * masterVolume, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
-    
-    osc.start(audioContext.currentTime);
-    osc.stop(audioContext.currentTime + 0.2);
+    if (!audioContext || !masterGain || audioContext.state === 'closed') return;
+    try {
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      
+      osc.frequency.setValueAtTime(400, audioContext.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.2);
+      osc.type = 'square';
+      
+      gain.gain.setValueAtTime(0.1 * masterVolume, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+      
+      osc.start(audioContext.currentTime);
+      osc.stop(audioContext.currentTime + 0.2);
+    } catch (e) {
+      console.log('Error playing wrong beep:', e);
+    }
   }
   
 
@@ -583,28 +602,30 @@
   
 
   function playTapBeep() {
-    if (!audioContext || !masterGain) return;
-    
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    
-    osc.connect(gain);
-    gain.connect(masterGain);
-    
-
-    let freq = 1000;
-    if (score > 1000) freq = 1200;
-    if (score > 2000) freq = 1400;
-    
-    osc.frequency.setValueAtTime(freq, audioContext.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
-    osc.type = 'triangle';
-    
-    gain.gain.setValueAtTime(0.2 * masterVolume, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
-    
-    osc.start(audioContext.currentTime);
-    osc.stop(audioContext.currentTime + 0.1);
+    if (!audioContext || !masterGain || audioContext.state === 'closed') return;
+    try {
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      
+      osc.connect(gain);
+      gain.connect(masterGain);
+      
+      let freq = 1000;
+      if (score > 1000) freq = 1200;
+      if (score > 2000) freq = 1400;
+      
+      osc.frequency.setValueAtTime(freq, audioContext.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
+      osc.type = 'triangle';
+      
+      gain.gain.setValueAtTime(0.2 * masterVolume, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+      
+      osc.start(audioContext.currentTime);
+      osc.stop(audioContext.currentTime + 0.1);
+    } catch (e) {
+      console.log('Error playing tap beep:', e);
+    }
   }
 
   function gameLoop(timestamp) {
@@ -643,8 +664,17 @@
     gameRunning = false;
     stopBackgroundMusic();
     
+    ambientMusicTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+    ambientMusicTimeouts = [];
+    
     if (audioContext) {
-      audioContext.close();
+      try {
+        if (audioContext.state !== 'closed') {
+          audioContext.close();
+        }
+      } catch (e) {
+        console.log('Error closing audio context:', e);
+      }
       audioContext = null;
       masterGain = null;
       bgMusicGain = null;
@@ -708,6 +738,9 @@
   });
 
   document.getElementById('start').addEventListener('click', () => {
+    if (gameRunning || isInitializing) return;
+    
+    isInitializing = true;
     gameRunning = true;
     score = 0;
     beatCount = 0;
@@ -716,11 +749,12 @@
     initBoxes();
     startBackgroundMusic();
     document.getElementById('info').textContent = 'Score: 0 | Beat: 0/' + TOTAL_BEATS;
+    isInitializing = false;
     requestAnimationFrame(gameLoop);
   });
 
   document.getElementById('stop').addEventListener('click', () => {
-    if (gameRunning) {
+    if (gameRunning && !isInitializing) {
       endGame();
     }
   });
