@@ -31,10 +31,6 @@ A rhythm-based tap game with advanced Web Audio API integration, Canvas animatio
 - Volume Control: Independent sliders for master and background music volume
 - Smart Audio Routing: All audio properly routed through analyser for visualization
 
-### Stage 4: Video API (Ready for Implementation)
-- Game recording support
-- Playback functionality
-- Demo video capture
 
 ## Features
 
